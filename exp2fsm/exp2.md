@@ -97,6 +97,66 @@ end
 assign found=(s==3'b110)?1:0;
 endmodule
 ```
+由于这样的写法导致vivado没有识别出有限状态机，我们根据风格手册进行了重写，分析详见综合分析：
+fsm_new.v
+```verilog
+module fsm(found,s,clk_i,din,reset_i,system_clk);
+input din,clk_i,reset_i,system_clk;
+output reg [2:0] s;
+output found;
+debounce xdb(.clk(system_clk),.key_i(reset_i),.key_o(reset));
+debounce xdb2(.clk(system_clk),.key_i(clk_i),.key_o(clk));
+initial begin
+s<=3'b000;
+end
+always @(posedge clk or posedge reset)
+begin
+if (reset)
+	begin
+	s<=3'b000;
+	end
+else
+	begin
+	case(s)
+	3'b000: if(din)
+	           s<=3'b001;
+	        else
+	           s<=3'b000;
+	3'b001: if(din)
+	           s<=3'b001;
+	        else
+	           s<=3'b010;
+	3'b010: if(din)
+	           s<=3'b011;
+	        else
+	           s<=3'b000;
+	3'b011: if(din)
+	           s<=3'b001;
+	        else
+	           s<=3'b100;
+	3'b100: if(din)
+	           s<=3'b101;
+	        else
+	           s<=3'b000;
+	3'b101: if(din)
+	           s<=3'b110;
+	        else
+	           s<=3'b100;
+	3'b110: if(din)
+	           s<=3'b001;
+	        else
+	           s<=3'b010;
+	3'b111: if(din)
+	           s<=3'b000;
+	        else
+	           s<=3'b000;
+	endcase
+	end
+end
+assign found=(s==3'b110)?1:0;
+
+endmodule
+```
 
 ### 3. 基于移位寄存器的序列检测器
 constraint_shift.xdc  
@@ -308,6 +368,13 @@ endmodule
 ![](fsm_ut.PNG)  
 
 ![](fsm_tm.PNG)
+
+这种实现方法消耗的LUT和寄存器很多，并且也没有识别出来是fsm并进行优化，说明写的风格存在问题：
+![](fsm_ut1.PNG)  
+![](fsm_ut2.PNG)  
+我们根据Xilinx风格手册重写了fsm，见代码，发现这样以后使用的LUT减少了很多，但寄存器依然使用了59个，同时在Synthesis Report中发现成功识别有限状态机（下图二）：  
+![](fsm_utnew.PNG)  
+![](fsm_synt.PNG)
 ### 2. 基于移位寄存器
 ![](shift_ut.PNG)  
 ![](shift_tm.PNG)
@@ -317,3 +384,4 @@ endmodule
 1. 通过这个实验，进一步巩固了对于有限状态机和移位寄存器的认识。巩固使用verilog语言中的`case`,`assign`。尤其是领悟了`assign`的电路意义，其对应的是从输入组合逻辑得到输出信号电路，是时延比较小的组合电路，在两种实现中表现为内部状态`s`的代码为设计锁存器的连接和锁存器的输出间的组合电路，而对`found`的`assign`则表现为从锁存器的输出到序列检测器结果输出的组合电路。
 2. 在这个实验中，debug比较久的有两个问题。首先使用了复位`reset`下降沿触发`always`块，低电平复位，和clk上升沿触发`s`改变的`always`块相同，因此会出现`clk`上升沿`reset`低电平复位导致按钮没有反应的现象。如果我们把`reset`触发复位新写一个`always`块也不行，因为这导致在两个`always`块里修改`s`导致重驱动。  
 第二个bug是`sw1`对应的是从右往左的第二个开关，我把它当成第一个了，但是开关的编号是从`sw0`开始的。:-(
+3. 硬件描述语言是编程语言，又是硬件的描述，因此平时写时就要养成良好的习惯，多参考对应FPGA公司的风格手册，比如说这次实验中的有限状态机就是要根据官方风格手册进行编码，这样才能被Vivado正确识别并被对应优化。
