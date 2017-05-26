@@ -1,4 +1,4 @@
-#Digital Circuit Experiment
+# Digital Circuit Experiment
 ## 1. 实验内容
 1. 计数器
 2. 序列检测器
